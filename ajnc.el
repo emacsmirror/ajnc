@@ -4,7 +4,6 @@
 ;; Author: nik gaffney <nik@fo.am>
 ;; Maintainer: nik gaffney <nik@fo.am>
 ;; Keywords: tools, programming, janet, repl, netrepl
-;; URL: https://codeberg.org/zzkt/ajnc
 ;; Homepage: https://codeberg.org/zzkt/ajnc
 ;; Version: 20260907
 ;; Package-Requires: ((emacs "28.1"))
@@ -373,7 +372,7 @@ evaluating `ajnc-completion-collect-expr' (via immediate-eval)."
   (interactive)
   (let ((repl-buffer (ajnc--repl-buffer)))
     (unless repl-buffer
-      (error "ajnc: no repl buffer for `%s'"
+      (error "Ajnc: no repl buffer for `%s'"
              (ajnc--repl-buffer-name-for (current-buffer))))
     (with-current-buffer repl-buffer
       (setq ajnc--completion-request t))
@@ -772,7 +771,7 @@ Reports a missing REPL buffer instead of raising an error."
   "Return the live repl process bound to the current buffer, else signal an error."
   (let ((proc (get-buffer-process (ajnc--repl-buffer))))
     (unless (and proc (process-live-p proc))
-      (error "ajnc: no live repl process (buffer `%s' missing?)"
+      (error "Ajnc: no live repl process (buffer `%s' missing?)"
              (ajnc--repl-buffer-name-for (current-buffer))))
     proc))
 
@@ -792,7 +791,7 @@ response is detected by shape and shown with `ajnc-repl-result-face'."
   (interactive "sImmediate code: ")
   (let ((repl-buffer (ajnc--repl-buffer)))
     (unless repl-buffer
-      (error "ajnc: buffer `%s' is missing..."
+      (error "Ajnc: buffer `%s' is missing"
              (ajnc--repl-buffer-name-for (current-buffer))))
     (ajnc--send-payload (concat "\xFF" code-str))
     ;; count the request only once it has actually been sent, so a
@@ -878,10 +877,10 @@ With `ajnc-mode' you can evaluate Janet forms in a netrepl server
 as if they were typed at a REPL prompt:
 
   * Type a form and press RET to evaluate it (comint input).
-  * M-x ajnc-send-immediate-code evaluates code directly, without
+  * \[ajnc-send-immediate-code] evaluates code directly, without
     feeding the shared repl input stream; the result is shown with
     `ajnc-repl-result-face'.
-  * M-x ajnc-cancel cancels the currently running evaluation.
+  * \[ajnc-cancel] cancels the currently running evaluation.
   * <up> / <down> walk the input history; <tab> completes the
     identifier at point against locally observed words.
 
@@ -942,16 +941,16 @@ The following keys are available in `ajnc-interaction-mode':
   (when ajnc--debug-output
     (message "ajnc sentinel: %S" event))
   (cond ((string-prefix-p "connection broken by remote peer" event)
-         (message "ajnc: connection to netrepl server closed")
+         (message "Ajnc: connection to netrepl server closed")
          (ajnc--recv-reset))
         ((string-prefix-p "open" event)
-         (message "ajnc: connected"))
+         (message "Ajnc: connected"))
         ((string-prefix-p "deleted" event)
-         (message "ajnc: process buffer deleted: %S" process)
+         (message "Ajnc: process buffer deleted: %S" process)
          (ajnc--recv-reset))
         (t
-         (message "ajnc: process event: %S" event)
-         (message "ajnc: process: %S" process))))
+         (message "Ajnc: process event: %S" event)
+         (message "Ajnc: process: %S" process))))
 
 
 ;;; Connecting to a REPL
@@ -1016,7 +1015,7 @@ so several REPLs can coexist (on separate fibers)."
             (setq-local ajnc--ansi-context nil)
             (setq ajnc-repl-buffer (current-buffer))
             (setq-local ajnc-repl-port port)
-            (setq ajnc--banner (format ";; ajnc: connected to %s:%d" host port)))
+            (setq ajnc--banner (format ";; connected to %s:%d" host port)))
           (ajnc--recv-reset)
           (ajnc-send-hello repl-process ajnc-client-name)
           (pop-to-buffer proc-buffer)
@@ -1042,11 +1041,10 @@ so several REPLs can coexist (on separate fibers)."
              (with-current-buffer (generate-new-buffer "*temporal disturbance*")
                (unwind-protect
                    (progn
-                     (insert (format (concat
-                                      "(import spork/netrepl)\n"
-                                      "(netrepl/server %S %S)\n"
-                                      "(print \"ajnc-netrepl-ready\")\n"
-                                      "(flush)\n")
+                     (insert (format "(import spork/netrepl)
+(netrepl/server %S %S)
+(print \"ajnc-netrepl-ready\")
+(flush)\n"
                                      host (number-to-string port)))
                      (write-region (point-min) (point-max) script))
                  (kill-buffer)))
@@ -1136,13 +1134,13 @@ a \"host:port\" endpoint. Retries with a new port if startup fails."
                                      (if (and reported (> reported 0))
                                          reported
                                        port))))
-          (message "ajnc: netrepl server failed to start (attempt %d); retrying..."
+          (message "Ajnc: netrepl server failed to start (attempt %d); retrying..."
                    attempt)
           (when (process-live-p process)
             (delete-process process)))))
     (unless endpoint
       (error "Failed to start the netrepl server"))
-    (message "ajnc: netrepl server listening on '%s'" endpoint)
+    (message "Ajnc: netrepl server listening on '%s'" endpoint)
     endpoint))
 
 ;;;###autoload
@@ -1164,8 +1162,8 @@ Once the server reports the port it is using, `ajnc' connects to that endpoint."
     (if (and process (process-live-p process))
         (progn
           (delete-process process)
-          (message "ajnc: stopped the netrepl server"))
-      (message "ajnc: no netrepl server is running"))))
+          (message "Ajnc: stopped the netrepl server"))
+      (message "Ajnc: no netrepl server is running"))))
 
 (defun ajnc--current-repl-port ()
   "Return the port of the netrepl REPL bound to the current buffer."
@@ -1173,7 +1171,7 @@ Once the server reports the port it is using, `ajnc' connects to that endpoint."
         (when buf
           (buffer-local-value 'ajnc-repl-port buf)))
       (ajnc--reported-port)
-      (error "ajnc: no running netrepl REPL. Start one with `ajnc-start-repl' first")))
+      (error "Ajnc: no running netrepl REPL. Start one with `ajnc-start-repl' first")))
 
 
 ;;;###autoload
@@ -1188,21 +1186,21 @@ Once the server reports the port it is using, `ajnc' connects to that endpoint."
          (server-name (format "janet-netrepl-server-%d" next-port))
          (server-buf-name (format "*ajnc-server-%d*" next-port)))
     (when (get-process proc-name)
-      (error "ajnc: a REPL process named `%s' already exists" proc-name))
+      (error "Ajnc: a REPL process named `%s' already exists" proc-name))
     (when (get-buffer-process (get-buffer buf-name))
-      (error "ajnc: a live process already exists in buffer `%s'" buf-name))
+      (error "Ajnc: a live process already exists in buffer `%s'" buf-name))
     (let* ((server (ajnc--start-server host next-port
                                        server-name server-buf-name))
            (original (current-buffer)))
       (unless (ajnc--wait-server server host next-port)
         (when (process-live-p server)
           (delete-process server))
-        (error "ajnc: netrepl server failed to start on port %d" next-port))
+        (error "Ajnc: netrepl server failed to start on port %d" next-port))
       (let ((repl (ajnc--connect (format "%s:%d" host next-port)
                                  proc-name buf-name)))
         (with-current-buffer original
           (setq-local ajnc-repl-buffer repl))
-        (message "ajnc: started REPL `%s' on port %d, linked to buffer `%s'"
+        (message "Ajnc: started REPL `%s' on port %d, linked to buffer `%s'"
                  buf-name next-port (buffer-name original))
         repl))))
 
