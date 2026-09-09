@@ -1,0 +1,147 @@
+# -*- mode: org;  coding: utf-8; -*-
+#+title: Janet Netrepl Client (ajnc)
+
+=ajnc= is a Janet [[https://github.com/janet-lang/spork][netrepl]] client for Emacs. It can provide a standalone interactive janet repl, a repl bound to buffer, and multiple co-existing repls. It should be compatible with any completion framework using =completion-at-point=.
+
+* Installation
+
+The package is a single file which can be installed manually or via Melpa (eventually)
+
+** Manual installation
+
+Download =ajnc.el= an place it somewhere in the load path and add a =require= to your init file. A [[https://janet-lang.org/][Janet]] installation providing =spork/netrepl= must be on your =PATH= to spawn a server.
+
+#+begin_src emacs-lisp
+(require 'ajnc)
+#+end_src
+
+** via use-package
+Install from Melpa with =M-x package-install ajnc= then configure as required.
+
+#+begin_src emacs-lisp
+(use-package ajnc
+  :hook (janet-mode . ajnc-interaction-mode)
+  :config
+    (setq ajnc-default-endpoint "localhost:9365"
+          ajnc-start-timeout 10))
+#+end_src
+
+* Usage
+** Starting a REPL
+
+Connect to an already-running netrepl server with =M-x ajnc=, then enter its endpoint in the format =host:port= when prompted.
+
+#+begin_src emacs-lisp
+(ajnc "localhost:9365")
+#+end_src
+
+...or spawn a new server and connect with =M-x ajnc-start-repl=
+
+** REPL interaction
+
+The =*janet-repl*= buffer contains an interactive repl.
+
+=ajnc-send-immediate-code= (bound to =C-c C-k= in the REPL) evaluates a form directly on the server, without feeding the shared repl input stream. The server replies with a single result message.
+
+=ajnc-cancel= (bound to =C-c C-x=) sends the =:cancel= command, which cancels the current evaluation.
+
+** Command protocol
+
+=ajnc-send-command= sends protocol commands (e.g. =source "file.janet"= ). Use symbols rather than keywords for command identifiers (e.g. =cancel=, not =:cancel=)
+
+** Interaction from a source buffer
+
+Use =M-x ajnc-interaction-mode= in a =janet-mode= buffer to evaluate code from a source file, or add a hook if prefered.
+
+#+begin_src emacs-lisp
+(add-hook 'janet-mode-hook #'ajnc-interaction-mode)
+#+end_src
+
+** Key bindings
+
+In a janet source buffer, these keybindings are set by default.
+
+|---------+-------------------------------+-------------------------------------------------|
+| *Binding* | *Command*                       | *Description*                                     |
+|---------+-------------------------------+-------------------------------------------------|
+| =C-c C-s= | =ajnc-start-repl=               | Start a netrepl server and connect              |
+| =C-c C-b= | =ajnc-send-buffer=              | Send the whole buffer                           |
+| =C-c C-e= | =ajnc-send-expression-at-point= | Send the expression at point                    |
+| =C-c C-9= | =ajnc-send-immediate-code=      | Eval immediately, outside the repl input stream |
+| =C-c C-x= | =ajnc-cancel=                   | Cancel the current evaluation                   |
+| =C-c C-r= | =ajnc-send-region=              | Send the selected region                        |
+| =C-c C-z= | =ajnc-switch-to-repl=           | Switch to the =*janet-repl*= buffer               |
+| =C-c C-n= | =ajnc-start-new-repl=           | Start another REPL on the next port and bind it |
+| =M-TAB=   | =completion-at-point=           | Complete the Janet identifier at point          |
+|---------+-------------------------------+-------------------------------------------------|
+
+** Multiple REPLs
+
+=ajnc-start-new-repl= (=C-c C-n= in =ajnc-interaction-mode=) starts a new netrepl server on the next available port and connects to it in a new =*janet-repl-<port>*= buffer. The new REPL is bound to the calling buffer via the buffer-local =ajnc-repl-buffer= variable. Any =ajnc-send-code=, =ajnc-send-region=, =ajnc-switch-to-repl=, etc from a buffer should target the correct REPL.
+
+Each REPL buffer records its port in its own =ajnc-repl-port=, and every REPL is also bound to itself.
+
+** Completion
+
+In the REPL buffer =<tab>= can be used for completion. Since the netrepl protocol does not have a server-side completion endpoint, completion is client-side and candidates are gathered from the current buffer, the REPL buffer, and =ajnc-completion-extra-words=.
+
+=ajnc-collect-completions= runs =(all-bindings)= in janet, which should return an array of all names bound in the repl's current enviroment. Binding names can also be added manually to  =ajnc-completion-extra-words=.
+
+** Streaming output
+
+The server sends =print= output and intermediate results in 0xFF prefixed messages. By default these appear in the REPL buffer. Setting =ajnc-split-stream-output= to non-nil will route them to a separate =*ajnc-stream*= buffer. Prompts, echoed input, and immediate-eval results still appear in the REPL.
+
+#+begin_src emacs-lisp
+(setq ajnc-split-stream-output t)
+#+end_src
+
+The server adds ANSI codes to its output and text in the repl is themeable via =term-color-*= faces. If =ajnc-colorize-output= is set to nil, ANSI escapes are stripped.
+
+#+begin_src emacs-lisp
+(setq ajnc-colorize-output t)
+#+end_src
+
+** ANSI
+
+When =ajnc-colorize-output= is enabled, =ajnc--colorize= maps ANSI codes to faces.
+
+- SGR 30-37/90-97 foreground and 40-47/100-107 background map to =term-color-*= faces.
+- 256-color (=38;5;N=, =48;5;N=) and truecolor (=38;2;R;G;B=, =48;2;R;G;B=) are translated directly =#RRGGBB= strings.
+- Attributes 1/2/3/4/7 map to bold/faint/italic/underline/reverse.
+- Non-SGR CSIs (e.g. cursor position) are dropped.
+
+* Customization
+
+The following =ajnc= settings can be customized.
+
+- =ajnc-default-endpoint= Host and port to connect to (default: =localhost:9365=)
+- =ajnc-netrepl-server-command= Command used to start a netrepl server (default: =janet-netrepl -H %h -P %p= )
+- =ajnc-netrepl-server-buffer-name= Buffer where the netrepl server process runs (default: =*ajnc-server*= )
+- =ajnc-start-timeout= Seconds to wait for the server to start listening (default: =10= )
+- =ajnc-split-stream-output= Route streamed output to a separate buffer (default: =nil=)
+- =ajnc-stream-output-buffer-name= Buffer receiving streamed output (default: =*ajnc-stream*=)
+- =ajnc-colorize-output= Keep and render ANSI escapes in streamed output, or strip when nil (default: =t=)
+- =ajnc-client-name= Client name reported to the server, shown in its prompt (default: =janet=)
+- =ajnc-completion-extra-words= A list of words offered for completion
+- =ajnc-completion-collect-expr= Janet expression evaluated by =ajnc-collect-completions= to collect global binding names (default: =(keys (all-bindings)))=)
+- etc.
+
+* Troubleshooting
+** netrepl server command was not found
+
+If neither =janet-netrepl= nor =janet= is on =exec-path=, starting a server will fail. Ensure [[https://janet-lang.org/][janet]] and [[https://github.com/janet-lang/spork][spork]] are both installed, or set =ajnc-netrepl-server-command= to use the full path.
+
+#+begin_src emacs-lisp
+(setq ajnc-netrepl-server-command "/usr/local/bin/janet-netrepl -H %h -P %p")
+#+end_src
+
+If the =janet-netrepl= command is missing but =janet= is on the path, the default falls back to a script that runs spork's =netrepl/server= directly.
+
+** Cannot connect to an existing server
+
+Ensure a netrepl server is actually listening at =ajnc-default-endpoint=, or use =M-x ajnc-start-repl= to spawn one. The remote server must use the =spork/netrepl= protocol.
+
+* Further
+- [[https://janet-lang.org/spork/api/netrepl.html][netrepl module docs (spork)]]
+- [[https://github.com/janet-lang/spork/blob/master/spork/netrepl.janet][netrepl protocol source (spork)]]
+- [[https://slime.common-lisp.dev/][SLIME]]: The Superior Lisp Interaction Mode for Emacs
