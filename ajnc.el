@@ -143,7 +143,7 @@ Use buffer-local `ajnc-repl-buffer' in BUFFER, else `ajnc-repl-buffer-name'."
 (defvar ajnc-netrepl-server-process-name "janet-netrepl-server"
   "Name of the netrepl server process.")
 
-(defvar ajnc--debug-output nil
+(defvar ajnc--debug t
   "If non-nil, output debug info to *Messages* buffer.")
 
 
@@ -160,15 +160,21 @@ Use buffer-local `ajnc-repl-buffer' in BUFFER, else `ajnc-repl-buffer-name'."
   "Prepend a 4-byte little-endian length header to PAYLOAD."
   (concat (ajnc--header (string-bytes payload)) payload))
 
-(defun ajnc--decode-hdr (header-str)
-  "Decode the 4-byte little-endian message length in HEADER-STR."
-  (when ajnc--debug-output
-    (message "header-str: %S" header-str))
-  (+ (aref header-str 0)
-     (ash (aref header-str 1) 8)
-     (ash (aref header-str 2) 16)
-     (ash (aref header-str 3) 24)))
+(defun ajnc--decode-header (header)
+  "Decode the 4-byte little-endian message length in HEADER."
+  (when ajnc--debug
+    (message "header: %s" (ajnc--hexstring header)))
+  (+ (aref header 0)
+     (ash (aref header 1) 8)
+     (ash (aref header 2) 16)
+     (ash (aref header 3) 24)))
 
+
+;; protocol debugging
+
+(defun ajnc--hexstring (string)
+  "Convert a STRING to sequence of hex values."
+  (mapconcat (lambda (x) (format "%02X " x)) (string-to-list string)))
 
 ;; Message reassembly across chunk boundaries.
 
@@ -190,7 +196,7 @@ Use buffer-local `ajnc-repl-buffer' in BUFFER, else `ajnc-repl-buffer-name'."
   "Parse IN-BYTES into complete netrepl message payloads.
 Holds partial headers and bodies for the next call, returned
 payloads keep their leading type byte (0xFF or 0xFE) intact."
-  (when ajnc--debug-output
+  (when ajnc--debug
     (message "length in-bytes: %d" (string-bytes in-bytes)))
   (let* ((s in-bytes)
          (s-len (string-bytes s))
@@ -218,7 +224,7 @@ payloads keep their leading type byte (0xFF or 0xFE) intact."
               (when (< hdr-bytes 4)
                 (throw 'done nil)))
           ;; body phase: decode length and consume the body
-          (let* ((msg-len (ajnc--decode-hdr ajnc--recv-header))
+          (let* ((msg-len (ajnc--decode-header ajnc--recv-header))
                  (decoded-cnt (string-bytes ajnc--recv-body))
                  (need (- msg-len decoded-cnt)))
             (if (> need remaining)
@@ -410,6 +416,7 @@ Prompt should have the form \"<client-name>:<line>:<state> \"."
         (setq-local buffer-read-only nil)
         (current-buffer))))
 
+
 (defun ajnc--stream-write (body)
   "Append streamed output BODY to the stream buffer.
 When `ajnc-colorize-output' is non-nil BODY uses `font-lock-face' properties
@@ -433,8 +440,9 @@ text and the `ajnc-stream-face' is used."
   "Pre-output filter for netrepl STRING.
 Dispatches 0xFF prefixed as streamed output, 0xFE as control data, responses
 as results, and anything else as a repl prompt."
-  (when ajnc--debug-output
-    (message "received: %S" string))
+  (when ajnc--debug
+    (message "received (hex): %S\nreceived (str): %s"
+             (ajnc--hexstring string) string))
   (let* ((msgs (ajnc--parse string))
          (parts '())
          (prompt nil))
@@ -475,7 +483,7 @@ as results, and anything else as a repl prompt."
     (when prompt
       ;; save the prompt for comint to apply properties
       (setq-local comint-prompt-regexp (regexp-quote prompt))
-      (when ajnc--debug-output
+      (when ajnc--debug
         (message "prompt: %S" prompt)))
     (cond
      ((null parts) "")
@@ -736,7 +744,7 @@ escape are carried across calls by `ajnc--ansi-context'."
 (defun ajnc--send-process (proc payload)
   "Length-prefix, debug-log, and send PAYLOAD to process PROC."
   (let ((msg (ajnc--frame payload)))
-    (when ajnc--debug-output
+    (when ajnc--debug
       (message "sending: %S" msg))
     (process-send-string proc msg)))
 
@@ -783,11 +791,7 @@ Reports a missing REPL buffer instead of raising an error."
 
 ;;;###autoload
 (defun ajnc-send-immediate-code (code-str)
-  "Eval CODE-STR immediately on the server (protocol step 4).
-A 0xFF prefix makes the server parse, eval, and protect CODE-STR,
-replying with a single tuple like \"(true 3)\"; unlike
-`ajnc-send-code' it bypasses the shared repl input stream.  The
-response is detected by shape and shown with `ajnc-repl-result-face'."
+  "Eval CODE-STR immediately on the server (protocol step 4)."
   (interactive "sImmediate code: ")
   (let ((repl-buffer (ajnc--repl-buffer)))
     (unless repl-buffer
@@ -795,7 +799,7 @@ response is detected by shape and shown with `ajnc-repl-result-face'."
              (ajnc--repl-buffer-name-for (current-buffer))))
     (ajnc--send-payload (concat "\xFF" code-str))
     ;; count the request only once it has actually been sent, so a
-    ;; failed send cannot leave the pending count permanently raised
+    ;; failed send cannot leave pending count permanently raised
     (with-current-buffer repl-buffer
       (setq ajnc--pending-results
             (1+ ajnc--pending-results)))))
@@ -851,12 +855,12 @@ Cancels the current evaluation, or is a no-op while idle."
 
 (defvar ajnc-mode-map
   (let ((map (copy-keymap comint-mode-map)))
-    (define-key map (kbd "<tab>") #'completion-at-point)
-    (define-key map (kbd "<down>") #'comint-next-input)
-    (define-key map (kbd "<up>") #'comint-previous-input)
-    (define-key map (kbd "C-c C-k") #'ajnc-send-immediate-code)
-    (define-key map (kbd "C-c C-q") #'ajnc-stop-repl)
-    (define-key map (kbd "C-c C-x") #'ajnc-cancel)
+    (define-key map (kbd "<tab>")    #'completion-at-point)
+    (define-key map (kbd "<down>")   #'comint-next-input)
+    (define-key map (kbd "<up>")     #'comint-previous-input)
+    (define-key map (kbd "C-c C-k")  #'ajnc-send-immediate-code)
+    (define-key map (kbd "C-c C-q")  #'ajnc-stop-repl)
+    (define-key map (kbd "C-c C-x")  #'ajnc-cancel)
     (easy-menu-define ajnc-mode-menu map
       "A Janet (Spork) Netrepl Client Mode Menu"
       '("Ajnc"
@@ -881,8 +885,8 @@ as if they were typed at a REPL prompt:
     feeding the shared repl input stream; the result is shown with
     `ajnc-repl-result-face'.
   * \[ajnc-cancel] cancels the currently running evaluation.
-  * <up> / <down> walk the input history; <tab> completes the
-    identifier at point against locally observed words.
+  * Use <up> / <down> to walk the input history.
+  * <tab> completes the identifier at point.
 
 \\{ajnc-mode-map}"
   :syntax-table lisp-mode-syntax-table
@@ -905,7 +909,7 @@ as if they were typed at a REPL prompt:
     (define-key map (kbd "C-c C-n") #'ajnc-start-new-repl)
     (define-key map (kbd "C-c C-9") #'ajnc-send-immediate-code)
     (define-key map (kbd "C-c C-x") #'ajnc-cancel)
-    (define-key map (kbd "M-C-i") #'completion-at-point)
+    (define-key map (kbd "M-C-i")   #'completion-at-point)
     (easy-menu-define ajnc-interaction-mode-menu map
       "A Janet (Spork) Netrepl Client Interaction Mode Menu"
       '("Ajnc"
@@ -938,7 +942,7 @@ The following keys are available in `ajnc-interaction-mode':
 ;;;###autoload
 (defun ajnc-sentinel (process event)
   "Sentinel for the REPL PROCESS. EVENT is the usual sentinel event string."
-  (when ajnc--debug-output
+  (when ajnc--debug
     (message "ajnc sentinel: %S" event))
   (cond ((string-prefix-p "connection broken by remote peer" event)
          (message "Ajnc: connection to netrepl server closed")
@@ -957,8 +961,8 @@ The following keys are available in `ajnc-interaction-mode':
 
 (defun ajnc--split-endpoint (endpoint)
   "Split ENDPOINT (\"host:port\") into (HOST PORT-STRING).
-Only the first two colon-separated fields are used; bracketed IPv6
-endpoints are not supported."
+Only the first two colon-separated fields are used. Hostnames and IPv4
+addresses can be used, IPv6 addresses are not (yet) supported."
   (let ((ep (split-string endpoint ":")))
     (list (car ep) (cadr ep))))
 
