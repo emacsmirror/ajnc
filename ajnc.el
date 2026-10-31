@@ -143,7 +143,7 @@ Use buffer-local `ajnc-repl-buffer' in BUFFER, else `ajnc-repl-buffer-name'."
 (defvar ajnc-netrepl-server-process-name "janet-netrepl-server"
   "Name of the netrepl server process.")
 
-(defvar ajnc--debug t
+(defvar ajnc--debug nil
   "If non-nil, output debug info to *Messages* buffer.")
 
 

@@ -16,7 +16,7 @@ Download =ajnc.el= an place it somewhere in the load path and add a =require= to
 #+end_src
 
 ** via use-package
-Install from Melpa with =M-x package-install ajnc= then configure as required.
+Install from Melpa with =M-x package-install ajnc= then configure as required...
 
 #+begin_src emacs-lisp
 (use-package ajnc
@@ -25,6 +25,15 @@ Install from Melpa with =M-x package-install ajnc= then configure as required.
     (setq ajnc-default-endpoint "localhost:9365"
           ajnc-start-timeout 10))
 #+end_src
+
+...or install directly from the repo using =:vc= (with Emacs \geq 30.1)
+
+#+BEGIN_SRC emacs-lisp
+(use-package ajnc
+  :vc (:url "https://codeberg.org/zzkt/ajnc"
+            :rev :newest)
+  :hook (janet-mode . ajnc-interaction-mode))
+#+END_SRC
 
 * Usage
 ** Starting a REPL
