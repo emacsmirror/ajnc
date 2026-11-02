@@ -1,27 +1,11 @@
 ;;; ajnc.el --- A Janet (Spork) Netrepl Client -*- lexical-binding: t; -*-
 
-;; Author: sogaiu (as ajsc.el)
 ;; Author: nik gaffney <nik@fo.am>
 ;; Maintainer: nik gaffney <nik@fo.am>
 ;; Keywords: tools, programming, janet, repl, netrepl
 ;; Homepage: https://codeberg.org/zzkt/ajnc
 ;; Version: 20260907
 ;; Package-Requires: ((emacs "28.1"))
-
-;; This file is not part of GNU Emacs.
-
-;; This program is free software; you can redistribute it and/or modify
-;; it under the terms of the GNU General Public License as published by
-;; the Free Software Foundation, either version 3 of the License, or
-;; (at your option) any later version.
-
-;; This program is distributed in the hope that it will be useful,
-;; but WITHOUT ANY WARRANTY; without even the implied warranty of
-;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-;; GNU General Public License for more details.
-
-;; You should have received a copy of the GNU General Public License
-;; along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Commentary:
 
@@ -32,12 +16,17 @@
 ;;
 ;; See the README for full usage and protocol notes.
 
+;;; License:
+;;
+;; This file is NOT part of GNU Emacs.
+;; This program is free software; Licensed under the EUPL
+
 ;;; Code:
 
+(require 'thingatpt)
 (require 'comint)
 (require 'subr-x)
 (require 'term)
-(require 'thingatpt)
 
 
 ;;; Customization
@@ -80,14 +69,14 @@
 (defcustom ajnc-split-stream-output nil
   "When non-nil, route streamed output to a separate buffer.
 With this option enabled stream messages are appended to a separate buffer,
-and prompts, echoed input, and immediate-eval results stay in the REPL."
+while prompts, echoed input, and immediate-eval results stay in the REPL."
   :type 'boolean
   :group 'ajnc)
 
 (defcustom ajnc-colorize-output t
   "When non-nil, keep and colorize ANSI escapes in streamed output.
-This option enables coloured output in the REPL, the SGR codes are mapped to
-the themeable `term-color-*' faces. When nil, all escapes are stripped."
+Enables coloured output in the REPL, the SGR codes are mapped to themeable faces
+using `term-color-*'. When nil, all escapes are stripped."
   :type 'boolean
   :group 'ajnc)
 
@@ -125,7 +114,7 @@ will target a named REPL. When nil, the default names are used, as
 set in  `ajnc-repl-buffer-name'.")
 
 (defvar-local ajnc-repl-port nil
-  "Netrepl server port this REPL buffer talks to.
+  "Netrepl server port used by the REPL bound to buffer.
 Set by `ajnc--connect'; nil in buffers without a REPL.")
 
 (defun ajnc--repl-buffer-name-for (buffer)
@@ -197,7 +186,7 @@ Use buffer-local `ajnc-repl-buffer' in BUFFER, else `ajnc-repl-buffer-name'."
 Holds partial headers and bodies for the next call, returned
 payloads keep their leading type byte (0xFF or 0xFE) intact."
   (when ajnc--debug
-    (message "length in-bytes: %d" (string-bytes in-bytes)))
+    (message "Ajnc: length in-bytes: %d" (string-bytes in-bytes)))
   (let* ((s in-bytes)
          (s-len (string-bytes s))
          (pos 0)
@@ -223,7 +212,7 @@ payloads keep their leading type byte (0xFF or 0xFE) intact."
                             (substring s (- pos take) pos)))
               (when (< hdr-bytes 4)
                 (throw 'done nil)))
-          ;; body phase: decode length and consume the body
+          ;; body: decode length and consume the body
           (let* ((msg-len (ajnc--decode-header ajnc--recv-header))
                  (decoded-cnt (string-bytes ajnc--recv-body))
                  (need (- msg-len decoded-cnt)))
@@ -270,7 +259,7 @@ Returns \"\" if no complete messages are available."
   "A list of words offered as completion targets.
 Used by `ajnc-completion-at-point' and collected from identifiers in the
 interaction and REPL buffers. The netrepl protocol does not provide
-server-side completion, so all completion is done client-side."
+server-side completion, so all completion needs to be done client-side."
   :type '(repeat string)
   :group 'ajnc)
 
@@ -585,23 +574,23 @@ previous input, FRAGMENT is any trailing partial escape.")
   "Set STATE `:fg' or `:bg' (KIND) to ANSI Color CODE (0..15)."
   (plist-put state (if (eq kind 'fg) :fg :bg) code))
 
-(defun ajnc--ansi-extended (state color params i)
-  "Apply the extended color sequence at index I of PARAMS.
-COLOR is `:fg' or `:bg'.  Returns (STATE . NEXT-INDEX)."
-  (let* ((mode (nth (1+ i) params))
-         (next (+ i (cond ((= mode 5) 3)
+(defun ajnc--ansi-extended (state color params index)
+  "Apply the extended color sequence at INDEX of PARAMS.
+COLOR is `:fg' or `:bg'. Returns (STATE . NEXT-INDEX)."
+  (let* ((mode (nth (1+ index) params))
+         (next (+ index (cond ((= mode 5) 3)
                           ((= mode 2) 6)
                           (t 1))))
          (value (cond ((= mode 5)
-                       (let ((code (nth (+ 2 i) params)))
+                       (let ((code (nth (+ 2 index) params)))
                          (if (< code 16)
                              (aref ajnc--term-faces code)
                            (ajnc--ansi-256-color code))))
                       ((= mode 2)
                        (format "#%02X%02X%02X"
-                               (or (nth (+ 2 i) params) 0)
-                               (or (nth (+ 3 i) params) 0)
-                               (or (nth (+ 4 i) params) 0))))))
+                               (or (nth (+ 2 index) params) 0)
+                               (or (nth (+ 3 index) params) 0)
+                               (or (nth (+ 4 index) params) 0))))))
     (cons (if value (plist-put state color value) state) next)))
 
 (defun ajnc--ansi-apply-sgr (state params)
@@ -684,7 +673,7 @@ Extended `38/48;5;N' and `38/48;2;R;G;B' are translated to `:fg' or `:bg'."
 (defun ajnc--colorize (string)
   "Return STRING with ANSI SGR escapes translated to faces.
 16-color codes map to `term-color-*' faces (`ajnc--term-faces'), 256-color and
-truecolor map to \"#RRGGBB\".  The running SGR state and any trailing partial
+truecolor map to \"#RRGGBB\". The running SGR state and any trailing partial
 escape are carried across calls by `ajnc--ansi-context'."
   (let ((ctx ajnc--ansi-context))
     (if (and (not (string-match-p "\e" string))
@@ -718,8 +707,8 @@ escape are carried across calls by `ajnc--ansi-context'."
                                           (substring input esc (match-end 0))))
                             pos (match-end 0))
                     (setq pos (match-end 0)))
-                ;; no complete CSI here: hold a tail that could continue
-                ;; in the next message, else drop it as garbage
+                ;; no complete CSI: hold a tail that could continue
+                ;; in the next message, or drop it
                 (if (and (string-match ajnc--csi-fragment-regexp input esc)
                          (= (match-beginning 0) esc))
                     (let ((fx (match-end 0)))
@@ -737,9 +726,41 @@ escape are carried across calls by `ajnc--ansi-context'."
     (ajnc--strip-ansi body)))
 
 
-;;; Sending to the REPL
+;;; NETREPL Protocol
+;;
 
-;; protocol step 1: greeting
+;;  1. server <- {connection settings, including client name} <- client
+;;     1.1. If msg starts with 0xFF, parse message as (-> msg (slice 1) parse)
+;;          and extract the :name key as the name. Other connection settings
+;;          can be stored here.
+;;     1.2. If msg does not start with 0xFF, the message is treated as the
+;;          client name. Other options are considered nil.
+
+;;  2. server -> {repl prompt (no newline)} -> client
+;;
+;;  3. server <- {one chunk of input (msg)} <- client
+;;
+;;  4. If (= (msg 0) 0xFF)
+;;     4.1. (def result (-> msg (slice 1) parse eval protect))
+;;     4.2. server -> result -> client
+;;     4.3. goto 3
+
+;;  5. If (= (msg 0) 0xFE)
+;;     5.1. Return msg as either:
+;;         - a keyword if the msg contains a command (e.g. :cancel)
+;;         - an array if the msg contains a command and arguments
+;;           (e.g. @[:source "path/to/source"]
+;;     5.2. goto 6.2
+;;
+;;  6. Otherwise
+;;     6.1. Send chunk to repl input stream
+;;     6.1. Unless auto-flush is enabled,
+;;         server -> {(dyn :out) and (dyn :err) (empty at first)} -> client
+;;     6.3. goto 2
+;;
+;; via https://janet-lang.org/spork/api/netrepl.html
+
+;; Protocol step 1
 
 (defun ajnc--send-process (proc payload)
   "Length-prefix, debug-log, and send PAYLOAD to process PROC."
@@ -749,13 +770,14 @@ escape are carried across calls by `ajnc--ansi-context'."
     (process-send-string proc msg)))
 
 (defun ajnc-send-hello (process hello-str)
-  "Send PROCESS the HELLO-STR as connection settings (protocol step 1).
+  "Send PROCESS the HELLO-STR as connection settings.
 A 0xFF-led Janet table sets the client :name and :auto-flush,
 enabling streamed partial results."
   (ajnc--send-process process
                       (format "\xFF{:auto-flush true :name %S}" hello-str)))
 
-;; repl input stream
+
+;; Protocol step 2,3
 
 (defun ajnc--send-to-repl (text)
   "Send TEXT through the repl input stream bound to the current buffer.
@@ -787,7 +809,8 @@ Reports a missing REPL buffer instead of raising an error."
   "Length-prefix and send PAYLOAD to the repl process."
   (ajnc--send-process (ajnc--repl-process) payload))
 
-;; protocol step 4: immediate evaluation
+
+;; Protocol step 4
 
 ;;;###autoload
 (defun ajnc-send-immediate-code (code-str)
@@ -798,14 +821,14 @@ Reports a missing REPL buffer instead of raising an error."
       (error "Ajnc: buffer `%s' is missing"
              (ajnc--repl-buffer-name-for (current-buffer))))
     (ajnc--send-payload (concat "\xFF" code-str))
-    ;; count the request only once it has actually been sent, so a
-    ;; failed send cannot leave pending count permanently raised
+    ;; count the request only once it has actually been sent.
+    ;; a failed send should not leave pending count raised
     (with-current-buffer repl-buffer
       (setq ajnc--pending-results
             (1+ ajnc--pending-results)))))
 
 
-;; protocol step 5: commands
+;; protocol step 5
 
 ;;;###autoload
 (defun ajnc-send-command (command-str)
@@ -823,7 +846,7 @@ Cancels the current evaluation, or is a no-op while idle."
   (ajnc-send-command "cancel"))
 
 
-;; region and buffer sending
+;; Region and buffer sending
 
 (defun ajnc-send-region (start end)
   "Send the selected region (START to END) to the netrepl REPL."
@@ -882,11 +905,10 @@ as if they were typed at a REPL prompt:
 
   * Type a form and press RET to evaluate it (comint input).
   * \[ajnc-send-immediate-code] evaluates code directly, without
-    feeding the shared repl input stream; the result is shown with
-    `ajnc-repl-result-face'.
+    updating the shared repl input stream.
   * \[ajnc-cancel] cancels the currently running evaluation.
   * Use <up> / <down> to walk the input history.
-  * <tab> completes the identifier at point.
+  * <tab> completes identifier at point.
 
 \\{ajnc-mode-map}"
   :syntax-table lisp-mode-syntax-table
@@ -1124,7 +1146,7 @@ Returns non-nil (waits up to `ajnc-start-timeout' seconds), or nil on failure."
 
 (defun ajnc--launch-server (host)
   "Start a netrepl server process on HOST with next free port.
-Waits for running server to report the port it is using  and returns
+Waits for running server to report the port it is using and returns
 a \"host:port\" endpoint. Retries with a new port if startup fails."
   (let ((attempt 0)
         (endpoint nil))
@@ -1208,8 +1230,6 @@ Once the server reports the port it is using, `ajnc' connects to that endpoint."
                  buf-name next-port (buffer-name original))
         repl))))
 
-;;;###autoload
-(defalias 'run-janet #'ajnc-start-repl)
 
 (provide 'ajnc)
 

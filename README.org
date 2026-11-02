@@ -35,6 +35,12 @@ Install from Melpa with =M-x package-install ajnc= then configure as required...
   :hook (janet-mode . ajnc-interaction-mode))
 #+END_SRC
 
+It may be useful to add a 'run-janet' alias, by including the following somwehere in your config.
+
+#+BEGIN_SRC emacs-lisp
+(defalias 'run-janet #'ajnc-start-repl)
+#+END_SRC
+
 * Usage
 ** Starting a REPL
 
