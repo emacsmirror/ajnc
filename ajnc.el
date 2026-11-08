@@ -19,7 +19,7 @@
 ;;; License:
 ;;
 ;; This file is NOT part of GNU Emacs.
-;; This program is free software; Licensed under the EUPL
+;; SPDX-License-Identifier: EUPL-1.2
 
 ;;; Code:
 
